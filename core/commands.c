@@ -18,6 +18,7 @@
 #include "../libs/memory.h"
 #include "../libs/screen.h"
 #include "../libs/keyboard.h"
+#include <stdio.h>   /* allowed: fopen/fwrite/fread/fclose for save/load */
 
 /* ── Command Dispatcher ───────────────────────────────────────────── */
 /*
@@ -26,6 +27,13 @@
  */
 int command_dispatch(char *tokens[], int count, int *current_dir) {
     if (count == 0) return 0;
+
+    /* ── Input Validation (Phase 2 Security) ─── */
+    if (tokens[0] == (char *)0 || my_strlen(tokens[0]) == 0) return 0;
+    if (my_strlen(tokens[0]) > 32) {
+        screen_print_color("  Error: command name too long\n", COLOR_RED);
+        return 0;
+    }
 
     if (my_strcmp(tokens[0], "echo") == 0)    return cmd_echo(tokens, count);
     if (my_strcmp(tokens[0], "ls") == 0)      return cmd_ls(tokens, count, *current_dir);
@@ -45,6 +53,7 @@ int command_dispatch(char *tokens[], int count, int *current_dir) {
     if (my_strcmp(tokens[0], "pwd") == 0)     return cmd_pwd(*current_dir);
     if (my_strcmp(tokens[0], "save") == 0)    return cmd_save();
     if (my_strcmp(tokens[0], "load") == 0)    return cmd_load();
+    if (my_strcmp(tokens[0], "halt") == 0)    return cmd_halt();
 
     /* Unknown command */
     screen_print_color("  Unknown command: '", COLOR_RED);
@@ -203,6 +212,21 @@ int cmd_help(void) {
     screen_print_color("  ║  touch <name>    ", COLOR_GREEN);
     screen_print_str("Create a new empty file                ");
     screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  write <f> <txt> ", COLOR_GREEN);
+    screen_print_str("Write content to a file                ");
+    screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  cat <file>      ", COLOR_GREEN);
+    screen_print_str("Display file contents                  ");
+    screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  rm <name>       ", COLOR_GREEN);
+    screen_print_str("Delete a file or empty directory        ");
+    screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  cd <dir>        ", COLOR_GREEN);
+    screen_print_str("Change directory (cd .. to go up)      ");
+    screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  pwd             ", COLOR_GREEN);
+    screen_print_str("Print current working directory        ");
+    screen_print_color("║\n", COLOR_CYAN);
     screen_print_color("  ║  echo <text>     ", COLOR_GREEN);
     screen_print_str("Print text to screen                   ");
     screen_print_color("║\n", COLOR_CYAN);
@@ -212,19 +236,23 @@ int cmd_help(void) {
     screen_print_color("  ║  ps              ", COLOR_GREEN);
     screen_print_str("Show process table                     ");
     screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  save            ", COLOR_GREEN);
+    screen_print_str("Persist filesystem to disk             ");
+    screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  load            ", COLOR_GREEN);
+    screen_print_str("Restore filesystem from disk           ");
+    screen_print_color("║\n", COLOR_CYAN);
     screen_print_color("  ║  clear           ", COLOR_GREEN);
     screen_print_str("Clear the terminal                     ");
     screen_print_color("║\n", COLOR_CYAN);
     screen_print_color("  ║  help            ", COLOR_GREEN);
     screen_print_str("Show this help message                 ");
     screen_print_color("║\n", COLOR_CYAN);
+    screen_print_color("  ║  halt            ", COLOR_GREEN);
+    screen_print_str("Emergency shutdown (wipes RAM)         ");
+    screen_print_color("║\n", COLOR_CYAN);
     screen_print_color("  ║  exit            ", COLOR_GREEN);
     screen_print_str("Shutdown MineOS                        ");
-    screen_print_color("║\n", COLOR_CYAN);
-    screen_print_color("  ╠══════════════════════════════════════════════════════════╣\n", COLOR_CYAN);
-    screen_print_color("  ║  ", COLOR_CYAN);
-    screen_print_color("Coming in Phase 2: ", COLOR_YELLOW);
-    screen_print_str("cat, write, rm, cd, pwd, save, load");
     screen_print_color("║\n", COLOR_CYAN);
     screen_print_color("  ╚══════════════════════════════════════════════════════════╝\n", COLOR_CYAN);
     screen_print_str("\n");
@@ -242,45 +270,250 @@ int cmd_exit(void) {
 }
 
 /* ══════════════════════════════════════════════════════════════════ */
-/*                     PHASE 2 STUBS                                */
+/*                     PHASE 2 COMMANDS                             */
 /* ══════════════════════════════════════════════════════════════════ */
 
+/* ── write ────────────────────────────────────────────────────────── */
+/*
+ * Write content to a file: write <filename> <content...>
+ * Joins all tokens after filename with spaces.
+ */
 int cmd_write(char *tokens[], int count, int current_dir) {
-    (void)tokens; (void)count; (void)current_dir;
-    screen_print_color("  write: coming in Phase 2\n", COLOR_YELLOW);
+    Inode *file;
+    char content[1024];
+    int i;
+    char buf[16];
+
+    if (count < 3) {
+        screen_print_color("  Usage: write <filename> <content>\n", COLOR_YELLOW);
+        return 0;
+    }
+
+    file = fs_find_child(current_dir, tokens[1]);
+    if (file == (Inode *)0) {
+        screen_print_color("  Error: file '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' not found\n", COLOR_RED);
+        return 0;
+    }
+
+    if (file->type != INODE_FILE) {
+        screen_print_color("  Error: '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' is a directory, not a file\n", COLOR_RED);
+        return 0;
+    }
+
+    /* Join tokens[2..count-1] with spaces */
+    content[0] = '\0';
+    for (i = 2; i < count; i = my_add(i, 1)) {
+        my_strcat(content, tokens[i]);
+        if (i < my_sub(count, 1)) {
+            my_strcat(content, " ");
+        }
+    }
+
+    if (fs_write(file->id, content) == 0) {
+        screen_print_color("  → Wrote ", COLOR_GREEN);
+        my_int_to_str(my_strlen(content), buf);
+        screen_print_color(buf, COLOR_GREEN);
+        screen_print_color(" bytes to ", COLOR_GREEN);
+        screen_print_color(tokens[1], COLOR_GREEN);
+        screen_print_str("\n");
+    }
     return 0;
 }
 
+/* ── cat ──────────────────────────────────────────────────────────── */
+/*
+ * Display file contents: cat <filename>
+ */
 int cmd_cat(char *tokens[], int count, int current_dir) {
-    (void)tokens; (void)count; (void)current_dir;
-    screen_print_color("  cat: coming in Phase 2\n", COLOR_YELLOW);
+    Inode *file;
+    char buf[4096];
+    int result;
+
+    if (count < 2) {
+        screen_print_color("  Usage: cat <filename>\n", COLOR_YELLOW);
+        return 0;
+    }
+
+    file = fs_find_child(current_dir, tokens[1]);
+    if (file == (Inode *)0) {
+        screen_print_color("  Error: file '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' not found\n", COLOR_RED);
+        return 0;
+    }
+
+    if (file->type != INODE_FILE) {
+        screen_print_color("  Error: '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' is a directory, not a file\n", COLOR_RED);
+        return 0;
+    }
+
+    result = fs_read(file->id, buf);
+    if (result == 0) {
+        screen_print_color("  (empty file)\n", COLOR_YELLOW);
+    } else if (result > 0) {
+        screen_print_str("  ");
+        screen_print_str(buf);
+        screen_print_str("\n");
+    }
+
     return 0;
 }
 
+/* ── rm ───────────────────────────────────────────────────────────── */
+/*
+ * Delete a file or empty directory: rm <name>
+ */
 int cmd_rm(char *tokens[], int count, int current_dir) {
-    (void)tokens; (void)count; (void)current_dir;
-    screen_print_color("  rm: coming in Phase 2\n", COLOR_YELLOW);
+    Inode *target;
+
+    if (count < 2) {
+        screen_print_color("  Usage: rm <name>\n", COLOR_YELLOW);
+        return 0;
+    }
+
+    target = fs_find_child(current_dir, tokens[1]);
+    if (target == (Inode *)0) {
+        screen_print_color("  Error: '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' not found\n", COLOR_RED);
+        return 0;
+    }
+
+    if (fs_delete(target->id) == 0) {
+        screen_print_color("  → Removed: ", COLOR_GREEN);
+        screen_print_color(tokens[1], COLOR_GREEN);
+        screen_print_str("\n");
+    }
     return 0;
 }
 
+/* ── cd ───────────────────────────────────────────────────────────── */
+/*
+ * cd          → go to home (/home/chandan, inode 3)
+ * cd ..       → go to parent
+ * cd /        → go to root
+ * cd <dir>    → go to named child directory
+ */
 int cmd_cd(char *tokens[], int count, int *current_dir) {
-    (void)tokens; (void)count; (void)current_dir;
-    screen_print_color("  cd: coming in Phase 2\n", COLOR_YELLOW);
+    Inode *current;
+    Inode *target;
+
+    /* No argument: go home */
+    if (count < 2) {
+        *current_dir = 3;
+        return 0;
+    }
+
+    /* cd .. — go to parent */
+    if (my_strcmp(tokens[1], "..") == 0) {
+        current = fs_get_inode(*current_dir);
+        if (current != (Inode *)0 && current->parent_id != -1) {
+            *current_dir = current->parent_id;
+        } else {
+            *current_dir = 0;  /* already at root */
+        }
+        return 0;
+    }
+
+    /* cd / — go to root */
+    if (my_strcmp(tokens[1], "/") == 0) {
+        *current_dir = 0;
+        return 0;
+    }
+
+    /* cd <name> — find child directory */
+    target = fs_find_child(*current_dir, tokens[1]);
+    if (target == (Inode *)0) {
+        screen_print_color("  Error: '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' not found\n", COLOR_RED);
+        return 0;
+    }
+
+    if (target->type != INODE_DIR) {
+        screen_print_color("  Error: '", COLOR_RED);
+        screen_print_color(tokens[1], COLOR_RED);
+        screen_print_color("' is not a directory\n", COLOR_RED);
+        return 0;
+    }
+
+    *current_dir = target->id;
     return 0;
 }
 
+/* ── pwd ──────────────────────────────────────────────────────────── */
 int cmd_pwd(int current_dir) {
-    (void)current_dir;
-    screen_print_color("  pwd: coming in Phase 2\n", COLOR_YELLOW);
+    char path[256];
+
+    fs_get_path(current_dir, path);
+    screen_print_str("  ");
+    screen_print_str(path);
+    screen_print_str("\n");
     return 0;
 }
 
+/* ── save ─────────────────────────────────────────────────────────── */
+/*
+ * Persists entire VIRTUAL_RAM to mineos.img on disk.
+ * Uses fopen/fwrite/fclose from <stdio.h> (allowed per project rules).
+ */
 int cmd_save(void) {
-    screen_print_color("  save: coming in Phase 2\n", COLOR_YELLOW);
+    FILE *fp = fopen("mineos.img", "wb");
+
+    if (fp == (FILE *)0) {
+        screen_print_color("  Error: could not create save file\n", COLOR_RED);
+        return 0;
+    }
+
+    fwrite(VIRTUAL_RAM, 1, RAM_SIZE, fp);
+    fclose(fp);
+
+    screen_print_color("  → Filesystem saved to mineos.img (", COLOR_GREEN);
+    {
+        char buf[16];
+        my_int_to_str(RAM_SIZE, buf);
+        screen_print_color(buf, COLOR_GREEN);
+    }
+    screen_print_color(" bytes)\n", COLOR_GREEN);
     return 0;
 }
 
+/* ── load ─────────────────────────────────────────────────────────── */
+/*
+ * Restores VIRTUAL_RAM from mineos.img on disk.
+ */
 int cmd_load(void) {
-    screen_print_color("  load: coming in Phase 2\n", COLOR_YELLOW);
+    FILE *fp = fopen("mineos.img", "rb");
+
+    if (fp == (FILE *)0) {
+        screen_print_color("  Error: no save file found (mineos.img)\n", COLOR_RED);
+        return 0;
+    }
+
+    fread(VIRTUAL_RAM, 1, RAM_SIZE, fp);
+    fclose(fp);
+
+    screen_print_color("  → Filesystem restored from mineos.img\n", COLOR_GREEN);
     return 0;
+}
+
+/* ── halt ─────────────────────────────────────────────────────────── */
+/*
+ * Emergency shutdown: wipes RAM, restores terminal, exits shell.
+ */
+int cmd_halt(void) {
+    screen_print_str("\n");
+    screen_print_color("  ⚠  EMERGENCY SHUTDOWN INITIATED\n", COLOR_RED);
+    screen_print_color("  Wiping virtual RAM...\n", COLOR_RED);
+    memory_init();
+    screen_print_color("  RAM cleared. System halted.\n", COLOR_RED);
+    screen_print_str("\n");
+    keyboard_restore();
+    return -1;  /* signal shell loop to exit */
 }
