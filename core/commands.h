@@ -32,5 +32,7 @@ int cmd_cd(char *tokens[], int count, int *current_dir);
 int cmd_pwd(int current_dir);
 int cmd_save(void);
 int cmd_load(void);
+int cmd_halt(void);
 
 #endif /* MINEOS_COMMANDS_H */
+
