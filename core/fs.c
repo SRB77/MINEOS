@@ -169,27 +169,144 @@ int fs_create(int parent_id, char *name, int type) {
     return new_id;
 }
 
-/* ── Delete Inode (Phase 2 Stub) ──────────────────────────────────── */
+/* ── Delete Inode ─────────────────────────────────────────────────── */
+/*
+ * Deletes a file or empty directory.
+ * Frees allocated data block, removes from parent's children, marks inactive.
+ */
 int fs_delete(int inode_id) {
-    (void)inode_id;
-    screen_print_color("[fs] rm: not yet implemented (Phase 2)\n", COLOR_YELLOW);
-    return -1;
+    Inode *inode = fs_get_inode(inode_id);
+    Inode *parent;
+    int i, found;
+
+    if (inode == (Inode *)0 || !inode->is_active) {
+        screen_print_color("[fs] Error: invalid inode\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Cannot delete root */
+    if (inode_id == 0) {
+        screen_print_color("[fs] Error: cannot delete root directory\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Cannot delete non-empty directory */
+    if (inode->type == INODE_DIR && inode->child_count > 0) {
+        screen_print_color("[fs] Error: directory not empty\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Free data block if file has content */
+    if (inode->data_offset != -1) {
+        dealloc(VIRTUAL_RAM + inode->data_offset);
+    }
+
+    /* Remove from parent's children array */
+    parent = fs_get_inode(inode->parent_id);
+    if (parent != (Inode *)0) {
+        found = 0;
+        for (i = 0; i < parent->child_count; i = my_add(i, 1)) {
+            if (parent->children[i] == inode_id) {
+                found = 1;
+            }
+            if (found && i < my_sub(parent->child_count, 1)) {
+                parent->children[i] = parent->children[my_add(i, 1)];
+            }
+        }
+        if (found) {
+            parent->child_count = my_sub(parent->child_count, 1);
+            parent->children[parent->child_count] = -1;
+        }
+    }
+
+    /* Mark inode as deleted */
+    inode->is_active = 0;
+    inode->name[0] = '\0';
+    inode->data_offset = -1;
+    inode->data_size = 0;
+
+    return 0;
 }
 
-/* ── Write Data to File (Phase 2 Stub) ────────────────────────────── */
+/* ── Write Data to File ──────────────────────────────────────────── */
+/*
+ * Writes content to a file inode. Old content is freed first.
+ * Allocates a new data block via alloc() and copies data in.
+ */
 int fs_write(int inode_id, char *data) {
-    (void)inode_id;
-    (void)data;
-    screen_print_color("[fs] write: not yet implemented (Phase 2)\n", COLOR_YELLOW);
-    return -1;
+    Inode *inode = fs_get_inode(inode_id);
+    void *block;
+    int len;
+
+    if (inode == (Inode *)0 || !inode->is_active) {
+        screen_print_color("[fs] Error: invalid inode\n", COLOR_RED);
+        return -1;
+    }
+
+    if (inode->type != INODE_FILE) {
+        screen_print_color("[fs] Error: cannot write to a directory\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Free old content if exists */
+    if (inode->data_offset != -1) {
+        dealloc(VIRTUAL_RAM + inode->data_offset);
+        inode->data_offset = -1;
+        inode->data_size = 0;
+    }
+
+    /* Allocate space for new content (+ null terminator) */
+    len = my_add(my_strlen(data), 1);
+    block = alloc(len);
+    if (block == (void *)0) {
+        screen_print_color("[fs] Error: not enough memory for write\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Copy content into allocated block */
+    my_strcpy((char *)block, data);
+
+    /* Update inode metadata */
+    inode->data_offset = (int)((char *)block - VIRTUAL_RAM);
+    inode->data_size = len;
+
+    return 0;
 }
 
-/* ── Read Data from File (Phase 2 Stub) ───────────────────────────── */
+/* ── Read Data from File ─────────────────────────────────────────── */
+/*
+ * Reads content from a file inode into the provided buffer.
+ * Returns data_size on success, 0 for empty file, -1 on error.
+ */
 int fs_read(int inode_id, char *buf) {
-    (void)inode_id;
-    (void)buf;
-    screen_print_color("[fs] read: not yet implemented (Phase 2)\n", COLOR_YELLOW);
-    return -1;
+    Inode *inode = fs_get_inode(inode_id);
+
+    if (inode == (Inode *)0 || !inode->is_active) {
+        screen_print_color("[fs] Error: invalid inode\n", COLOR_RED);
+        return -1;
+    }
+
+    if (inode->type != INODE_FILE) {
+        screen_print_color("[fs] Error: cannot read a directory\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Empty file */
+    if (inode->data_offset == -1) {
+        buf[0] = '\0';
+        return 0;
+    }
+
+    /* Validate offset is within data region */
+    if (!in_bounds(inode->data_offset, DATA_REGION_OFFSET, my_sub(RAM_SIZE, 1))) {
+        screen_print_color("[fs] Error: data offset out of bounds\n", COLOR_RED);
+        return -1;
+    }
+
+    /* Copy content to caller's buffer */
+    my_strcpy(buf, VIRTUAL_RAM + inode->data_offset);
+
+    return inode->data_size;
 }
 
 /* ── List Directory Contents ──────────────────────────────────────── */
