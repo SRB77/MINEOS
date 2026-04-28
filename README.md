@@ -1,144 +1,229 @@
 <div align="center">
-  <h1>🚀 MineOS</h1>
-  <p><b>A purely custom, dependency-free Virtual Operating System built entirely in C99.</b></p>
+  <h1>🖥️ MineOS</h1>
+  <p><b>A dependency-free Virtual Operating System built from scratch in C99.</b></p>
 
   [![Language: C99](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
   [![Libraries: Custom](https://img.shields.io/badge/Libraries-100%25_Custom-brightgreen.svg)]()
   [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-Zero-red.svg)]()
+  [![Phase: 2 Complete](https://img.shields.io/badge/Phase-2_Complete-success.svg)]()
 </div>
 
-<br>
+---
 
-## 📖 Table of Contents
-- [About the Project](#-about-the-project)
-- [System Architecture Flow](#-system-architecture-flow)
-- [The "No Standard C Library" Philosophy](#-the-no-standard-c-library-philosophy)
-- [Directory Structure](#-directory-structure)
-- [How to Setup Locally](#-how-to-setup-locally)
-- [Demo Showcase](#-demo-showcase)
-- [Guide for Evaluators](#-guide-for-evaluators)
+## Project Description
+
+MineOS is a Unix-like virtual operating system that runs inside a terminal. It simulates fundamental OS components — RAM, a file system, a process scheduler, and an interactive shell — **without using any standard C library** (`<stdio.h>`, `<stdlib.h>`, `<string.h>` are all replaced by hand-written equivalents).
+
+Five custom libraries (`libs/`) handle low-level work (memory allocation, string ops, screen output, keyboard input, math), and four core modules (`core/`) implement the OS-level logic (shell, commands, filesystem, scheduler).
+
+> **Exception:** `<stdio.h>` is used **only** for `fopen`/`fwrite`/`fread`/`fclose` in the `save` and `load` commands (disk persistence).
 
 ---
 
-## 🎯 About the Project
-
-MineOS is a phase-based project aimed at building a Unix-like virtual operating system from scratch inside a terminal space. 
-
-Instead of relying on heavy existing frameworks or even the standard C libraries, MineOS simulates its fundamental building blocks (RAM, disk operations, standard IO, string manipulations) all on its own. It boots up, hooks into the keyboard directly, loads a custom virtual file system, and provides an interactive shell for the user to execute commands.
-
----
-
-## 🏗️ System Architecture Flow
-
-Here is a high-level representation of how MineOS boots gracefully and processes inputs. The architecture separates the underlying basic operations (`libs/`) from the system-level functions (`core/`).
-
-```mermaid
-graph TD;
-    Entry[main.c - OS Entry Point] --> InitRAM[1. Initialize Virtual RAM]
-    InitRAM --> InitFS[2. Initialize Virtual File System]
-    InitFS --> InitTerm[3. Hook Keyboard & Terminal]
-    InitTerm --> BootScreen[4. Render Boot Banner]
-    BootScreen --> ShellLoop[5. Enter Interactive Shell Loop]
-    
-    ShellLoop --> WaitForInput((Wait for User Input))
-    WaitForInput --> KeyboardLib[Keyboard Lib Raw Mode]
-    
-    KeyboardLib -- User Hits Enter --> Parser[commands.c Command Parser]
-    
-    Parser -- "ls / mkdir / touch" --> FSController[fs.c Virtual FS Manager]
-    Parser -- "memstat" --> RAMManager[memory.c RAM Manager]
-    Parser -- "clear / echo" --> ScreenManager[screen.c Display Manager]
-    
-    FSController --> Renderer(Output to Screen)
-    RAMManager --> Renderer
-    ScreenManager --> Renderer
-    Renderer --> WaitForInput
-```
-
----
-
-## 🚫 The "No Standard C Library" Philosophy
-
-One of the strict constraints of MineOS is that we do **not** use standard libraries like `<stdio.h>`, `<stdlib.h>`, or `<string.h>` for core application logic. 
-
-We built **five foundational custom libraries** inside the `libs/` directory to simulate standard hardware behaviour and C utilities:
-
-1. 🧮 **`math.c`**: Handles low-level numeric/computational bounds checking and mathematical algorithms usually provided by the system.
-2. 🔠 **`string.c`**: A complete rewrite of standard string parsers. Since shells rely heavily on splitting space-separated arguments, we implemented custom `strcpy`, `strcmp`, `strlen`, and `strtok`.
-3. 💾 **`memory.c`**: Replaces `malloc`/`free`. We simulate an isolated "RAM block" mapping used by processes and file system nodes.
-4. 🖥️ **`screen.c`**: Replaces `printf`. This library bridges pure bytes onto the terminal using customized ANSI escape tracking, clearing the screen natively, and rendering visual borders.
-5. ⌨️ **`keyboard.c`**: We bypass standard buffered input (where you have to press Enter before C reads keys). We hook directly into the terminal's `termios` to enable raw-mode keystroke capturing.
-
----
-
-## 📂 Directory Structure
+## Project Structure
 
 ```text
 MINEOS/
+├── main.c              ← Entry point — boot sequence
+├── Makefile            ← Build system (gcc, C99)
 │
-├── main.c           # OS Entry point. Initializes hardware simulators and jumps to shell.
-├── Makefile         # Build pipeline for compiling system modules.
+├── libs/               ← Custom replacements for standard C
+│   ├── memory.c/.h     ← 10 MB virtual RAM, first-fit allocator (replaces malloc/free)
+│   ├── string.c/.h     ← strcpy, strcmp, strlen, tokenizer (replaces <string.h>)
+│   ├── screen.c/.h     ← ANSI terminal output (replaces printf)
+│   ├── keyboard.c/.h   ← Raw-mode keystroke capture via termios
+│   └── math.c/.h       ← Bounds checking, arithmetic helpers
 │
-├── core/            # The "Operating System" Logic
-│   ├── commands.c/h # Maps shell text to kernel actions (e.g. 'echo', 'mkdir').
-│   ├── fs.c/h       # High-level virtual file system controller.
-│   ├── scheduler.c/h# CPU task/process queue simulator.
-│   └── shell.c/h    # The infinite prompt loop.
+├── core/               ← OS logic
+│   ├── shell.c/.h      ← Interactive prompt loop
+│   ├── commands.c/.h   ← Dispatcher + all 17 command implementations
+│   ├── fs.c/.h         ← Inode-based virtual file system
+│   └── scheduler.c/.h  ← Tick-based process table in virtual RAM
 │
-└── libs/            # Hardware abstraction and base C utilities
-    ├── keyboard.c/h # Directly intercepts keystrokes via RAW terminal mode.
-    ├── math.c/h     # Low-level mathematical logic operations.
-    ├── memory.c/h   # OS Virtual RAM setup and chunk allocation.
-    ├── screen.c/h   # Handles direct-to-buffer screen painting.
-    └── string.c/h   # Custom string operations.
+├── Assets/             ← Screenshots and demo images
+└── mineos.img          ← Auto-generated filesystem snapshot (via save)
 ```
 
 ---
 
-## 🚀 How to Setup Locally
+## System Architecture
 
-Running MineOS is incredibly simple. You only need `gcc` installed on your machine.
+The diagram below shows the boot sequence and how a user command flows through the system.
 
-**1. Clone the repository / Navigate to directory**
+```mermaid
+flowchart TD
+    subgraph Boot["Boot Sequence (main.c)"]
+        B1["1. memory_init() — zero 10 MB RAM, setup allocator"]
+        B2["2. fs_init() — create default directory tree"]
+        B3["3. keyboard_init() — switch terminal to raw mode"]
+        B4["4. scheduler_init() — spawn uptime process"]
+        B5["5. screen_boot_banner() — render ASCII banner"]
+        B1 --> B2 --> B3 --> B4 --> B5
+    end
+
+    B5 --> Shell
+
+    subgraph Shell["Shell Loop (shell.c)"]
+        S1["Print prompt: [user@mine /path]$"]
+        S2["Read input via keyboard lib"]
+        S3["Tokenize input via string lib"]
+        S4["Dispatch to command handler"]
+        S5["scheduler_tick() — update processes"]
+        S1 --> S2 --> S3 --> S4 --> S5 --> S1
+    end
+
+    subgraph Commands["Command Handlers (commands.c)"]
+        FS["ls · mkdir · touch · write · cat · rm"]
+        NAV["cd · pwd"]
+        SYS["memstat · ps · echo · clear · help"]
+        DISK["save · load"]
+        EXIT["exit · halt"]
+    end
+
+    S4 --> Commands
+
+    FS --> FSModule["fs.c — Inode Table in VIRTUAL_RAM"]
+    NAV --> FSModule
+    SYS --> Libs["libs/ — memory, screen, scheduler"]
+    DISK --> DiskIO["stdio.h — fwrite/fread to mineos.img"]
+    EXIT --> Cleanup["keyboard_restore() → return 0"]
+```
+
+### Virtual RAM Layout (10 MB)
+
+```text
+Offset          Region                  Size
+─────────────────────────────────────────────────
+0x0000          RAM Header              64 B
+0x0040          Inode Table             16,384 B   (128 slots × 128 B)
+0x4040          Process Table           1,024 B    (16 slots × 64 B)
+0x4440          Data Block Region       ~10.46 MB  (managed by alloc/dealloc)
+```
+
+---
+
+## User Controls / Commands
+
+| Command | Usage | Description |
+|---|---|---|
+| `ls` | `ls` | List files and directories in current directory |
+| `mkdir` | `mkdir <name>` | Create a new directory |
+| `touch` | `touch <name>` | Create a new empty file |
+| `write` | `write <file> <text>` | Write content to a file (allocates data block) |
+| `cat` | `cat <file>` | Display file contents |
+| `rm` | `rm <name>` | Delete a file or empty directory |
+| `cd` | `cd <dir>` / `cd ..` / `cd /` / `cd` | Change directory (no args = home) |
+| `pwd` | `pwd` | Print current working directory path |
+| `echo` | `echo <text>` | Print text to screen |
+| `memstat` | `memstat` | Show virtual RAM usage (total, used, free) |
+| `ps` | `ps` | Show process table (PID, name, status, ticks) |
+| `save` | `save` | Persist entire filesystem to `mineos.img` |
+| `load` | `load` | Restore filesystem from `mineos.img` |
+| `clear` | `clear` | Clear the terminal screen |
+| `help` | `help` | Show built-in command reference |
+| `halt` | `halt` | Emergency shutdown — wipes RAM and exits |
+| `exit` | `exit` | Graceful shutdown |
+
+---
+
+## How to Build and Run
+
+### Prerequisites
+
+- **gcc** (any version supporting C99)
+- A Unix-like terminal (macOS / Linux)
+
+### Steps
+
 ```bash
+# 1. Clone the repository
+git clone https://github.com/<your-username>/MINEOS.git
 cd MINEOS
-```
 
-**2. Compile and Boot**
-Using the integrated `Makefile`, you can quickly compile all nodes and execute the OS.
-```bash
+# 2. Compile and run in one step
 make run
-```
-**(This command compiles `.c` files into `mine` executable, and immediately runs `./mine`)*.*
 
-**3. Cleanup Build Files**
-To clean up object `.o` files and binaries:
-```bash
+# 3. You are now inside MineOS — try: ls, mkdir test, touch file.txt, help
+
+# 4. Exit the OS
+exit
+
+# 5. Clean build artifacts
 make clean
 ```
 
----
-
-## 📸 Demo Showcase
-
-Here is a visual demonstration of MineOS in action:
-
-> ![Boot Sequence Placeholder](./Assets/bootloading.jpeg) 
-> *Image 1:* The beautiful boot sequence banner generated directly via `screen.c`, bypassing `stdio` buffering, launching immediately upon executing `./mine`.
-
-<br>
-
-
-> ![Shell Commands Placeholder](./Assets/commandtesting.jpeg) 
-> *Image 2:* The interactive shell looping. Notice the utilization of the commands like `ls` and `mkdir` communicating smoothly with the locally simulated RAM space in `fs.c`.
-
-<br>
-
-
-> ![Memstat Placeholder](./Assets/memorystat.jpeg) 
-> *Image 3:* Using the `memstat` command, evaluating how our custom `memory.c` allocates specific blocks rather than relying on system-level `malloc`.
-
-
+**What `make run` does:**  
+Compiles all `.c` files in `libs/` and `core/` with `gcc -Wall -Wextra -std=c99 -g`, links them into a `./mine` binary, and immediately runs it.
 
 ---
 
+## Demo Evidence
+
+### Phase 1 Screenshots
+
+> ![Boot Sequence](./Assets/bootloading.jpeg)
+> **Screenshot 1 — Boot Sequence:** MineOS boots with an ASCII banner rendered entirely through `screen.c`, initializes RAM, mounts the filesystem, starts the scheduler, and drops into the shell.
+
+<br>
+
+> ![Shell & Commands](./Assets/commandtesting.jpeg)
+> **Screenshot 2 — Shell Commands:** Demonstrates `ls`, `mkdir`, `touch`, and `echo` working in the interactive shell. Directories show in blue, files in cyan.
+
+<br>
+
+> ![Memory Stats](./Assets/memorystat.jpeg)
+> **Screenshot 3 — Memory Statistics:** The `memstat` command shows the custom allocator's state — 10 MB total RAM, with the data region tracked by the first-fit block allocator.
+
+<br>
+
+### Phase 2 Screenshots
+
+<!-- 
+    ┌──────────────────────────────────────────────────────────────────┐
+    │  PHASE 2 DEMO IMAGES — Add screenshots here when available     │
+    │                                                                  │
+    │  Suggested captures:                                             │
+    │    1. write + cat  → writing to a file and reading it back       │
+    │    2. cd + pwd     → navigating directories, pwd showing path    │
+    │    3. rm           → deleting a file, then ls to confirm         │
+    │    4. save + load  → persisting and restoring across reboots     │
+    │    5. ps           → process table with uptime ticking           │
+    │    6. halt         → emergency shutdown wiping RAM               │
+    └──────────────────────────────────────────────────────────────────┘
+-->
+
+> **Screenshot 4 — File Read/Write (Phase 2):**
+> _📷 Image placeholder — add screenshot of `write` + `cat` commands here_
+>
+> `![Write and Cat](./Assets/phase2_write_cat.jpeg)`
+
+<br>
+
+> **Screenshot 5 — Directory Navigation (Phase 2):**
+> _📷 Image placeholder — add screenshot of `cd` + `pwd` commands here_
+>
+> `![Directory Navigation](./Assets/phase2_cd_pwd.jpeg)`
+
+<br>
+
+> **Screenshot 6 — Persistence & Process Table (Phase 2):**
+> _📷 Image placeholder — add screenshot of `save`/`load` + `ps` commands here_
+>
+> `![Save Load PS](./Assets/phase2_save_ps.jpeg)`
+
+---
+
+## Known Issues
+
+| # | Issue | Severity | Details |
+|---|---|---|---|
+| 1 | **Inode IDs are never recycled** | Medium | `next_inode_id` only increments. Deleting files with `rm` marks inodes inactive but the ID slot is not reused. After 128 creates, no more files/dirs can be made (until reboot). |
+| 2 | **`write` overwrites, no append** | Low | `write` replaces the entire file content each time. There is no append mode. |
+| 3 | **Directory max children = 16** | Low | Each directory can hold at most 16 children (`MAX_CHILDREN`). Exceeding this prints an error. |
+| 4 | **`rm` cannot delete non-empty directories** | By Design | You must manually remove all children before removing a directory. No recursive delete. |
+| 5 | **`save`/`load` dumps entire 10 MB** | Low | The `mineos.img` file is always 10 MB regardless of actual usage. No compression or delta saves. |
+| 6 | **No tab completion or arrow-key history** | Low | The raw-mode keyboard driver supports backspace and enter, but not arrow keys or tab completion. |
+| 7 | **Single-user, single-session** | By Design | No multi-user support or concurrent sessions. One shell loop runs until exit. |
+| 8 | **Command name max 32 chars** | Low | Input validation rejects commands longer than 32 characters as a safety measure. |
+
+---
