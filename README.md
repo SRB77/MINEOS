@@ -92,12 +92,20 @@ flowchart TD
 ### Virtual RAM Layout (10 MB)
 
 ```text
-Offset          Region                  Size
-─────────────────────────────────────────────────
-0x0000          RAM Header              64 B
-0x0040          Inode Table             16,384 B   (128 slots × 128 B)
-0x4040          Process Table           1,024 B    (16 slots × 64 B)
-0x4440          Data Block Region       ~10.46 MB  (managed by alloc/dealloc)
+┌──────────────────────────────────────────┐ ← Offset 0
+│  RAM Header (64 bytes)                   │
+├──────────────────────────────────────────┤ ← Offset 64
+│  Inode Table                             │
+│  128 slots × 128 bytes = 16,384 bytes    │
+├──────────────────────────────────────────┤ ← Offset 16,448
+│  Process Table                           │
+│  16 slots × 64 bytes = 1,024 bytes       │
+├──────────────────────────────────────────┤ ← Offset 17,472
+│  Data Block Region                       │
+│  ~10.48 MB of dynamic free space         │
+│  Managed by alloc() / dealloc()          │
+│  Uses linked-list of BlockHeaders        │
+└──────────────────────────────────────────┘ ← Offset 10,485,760
 ```
 
 ---
@@ -195,21 +203,21 @@ Compiles all `.c` files in `libs/` and `core/` with `gcc -Wall -Wextra -std=c99 
 > **Screenshot 4 — File Read/Write (Phase 2):**
 > _📷 Image placeholder — add screenshot of `write` + `cat` commands here_
 >
-> `![Write and Cat](./Assets/phase2_write_cat.jpeg)`
+> ![Write and Cat](./Assets/phase2_write_cat.jpeg)
 
 <br>
 
 > **Screenshot 5 — Directory Navigation (Phase 2):**
 > _📷 Image placeholder — add screenshot of `cd` + `pwd` commands here_
 >
-> `![Directory Navigation](./Assets/phase2_cd_pwd.jpeg)`
+> ![Directory Navigation](./Assets/phase2_cd_pwd.jpeg)
 
 <br>
 
 > **Screenshot 6 — Persistence & Process Table (Phase 2):**
 > _📷 Image placeholder — add screenshot of `save`/`load` + `ps` commands here_
 >
-> `![Save Load PS](./Assets/phase2_save_ps.jpeg)`
+> ![Save Load PS](./Assets/phase2_save_ps.jpeg)
 
 ---
 
